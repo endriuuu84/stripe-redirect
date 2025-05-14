@@ -19,7 +19,7 @@
         }
         
         .container {
-            max-width: 500px;
+            max-width: 800px;
             background-color: white;
             padding: 30px;
             border-radius: 12px;
@@ -30,6 +30,13 @@
         h1 {
             color: #FF7A00;
             margin-bottom: 20px;
+        }
+        
+        h2 {
+            color: #4CAF50;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            font-size: 18px;
         }
         
         .spinner {
@@ -67,21 +74,239 @@
             height: auto;
             margin-bottom: 20px;
         }
+        
+        .debug-section {
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 20px 0;
+            text-align: left;
+            overflow-x: auto;
+        }
+        
+        .param-table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        
+        .param-table th, .param-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        
+        .param-table th {
+            background-color: #f2f2f2;
+        }
+        
+        .button {
+            display: inline-block;
+            background-color: #FF7A00;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+            margin-top: 20px;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .button:hover {
+            background-color: #e56e00;
+        }
+        
+        .button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        
+        .debug-mode-toggle {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(255, 122, 0, 0.1);
+            border: 1px solid #FF7A00;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-weight: bold;
+            color: #FF7A00;
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
+    <div class="debug-mode-toggle" id="debugToggle" title="Attiva/Disattiva modalità debug">D</div>
+    
     <div class="container">
         <img src="https://firebasestorage.googleapis.com/v0/b/fooddeliveryapp-bfa07.appspot.com/o/peeno-logo.png?alt=media" alt="Peeno Logo" class="logo" onerror="this.style.display='none'">
         <h1>Reindirizzamento in corso</h1>
-        <div class="spinner"></div>
+        <div class="spinner" id="spinner"></div>
         <p id="message">Attendi mentre ti reindirizziamo all'app Peeno...</p>
-        <p id="debug"></p>
+        
+        <!-- Sezione Debug Completa (nascosta di default) -->
+        <div id="debugContent" style="display:none;">
+            <h2>Informazioni Debug</h2>
+            <div class="debug-section">
+                <p><strong>URL completo:</strong> <span id="fullUrl"></span></p>
+                <p><strong>URL Path:</strong> <span id="urlPath"></span></p>
+                <p><strong>Referer:</strong> <span id="referer"></span></p>
+                <p><strong>User Agent:</strong> <span id="userAgent"></span></p>
+                <p><strong>Redirect URL calcolato:</strong> <span id="redirectUrl"></span></p>
+            </div>
+            
+            <h2>Parametri URL ricevuti</h2>
+            <div class="debug-section">
+                <table class="param-table" id="paramsTable">
+                    <thead>
+                        <tr>
+                            <th>Parametro</th>
+                            <th>Valore</th>
+                        </tr>
+                    </thead>
+                    <tbody id="paramsBody">
+                        <!-- I parametri verranno aggiunti qui -->
+                    </tbody>
+                </table>
+                
+                <div id="stateParamSection" style="display:none;">
+                    <h3>Contenuto parametro 'state'</h3>
+                    <pre id="stateParamContent"></pre>
+                </div>
+            </div>
+            
+            <h2>Log di debug</h2>
+            <div class="debug-section">
+                <div id="debug"></div>
+            </div>
+            
+            <button id="manualRedirectBtn" class="button">Esegui redirect manuale</button>
+            <button id="copyDebugBtn" class="button">Copia informazioni debug</button>
+        </div>
         
         <script>
+            // Variabili globali
+            let isDebugMode = false;
+            let computedRedirectUrl = '';
+            let allParams = {};
+            
+            // Controllo per parametro "debug" nell'URL
+            function checkDebugParam() {
+                const urlParams = new URLSearchParams(window.location.search);
+                return urlParams.has('debug');
+            }
+            
+            // Funzione per attivare modalità debug
+            function enableDebugMode() {
+                isDebugMode = true;
+                document.getElementById('debugContent').style.display = 'block';
+                document.getElementById('spinner').style.display = 'none';
+                document.getElementById('message').textContent = 'Modalità debug attivata. Nessun redirect automatico.';
+                
+                // Aggiunge "debug" all'URL se non è già presente
+                if (!checkDebugParam()) {
+                    const newUrl = new URL(window.location.href);
+                    newUrl.searchParams.append('debug', '1');
+                    window.history.replaceState({}, '', newUrl);
+                }
+            }
+            
+            // Controlla se la modalità debug è attiva
+            if (checkDebugParam()) {
+                enableDebugMode();
+            }
+            
             // Funzione per loggare messaggi di debug
             function logDebug(message) {
                 const debug = document.getElementById('debug');
                 debug.innerHTML += message + '<br>';
+                console.log(message);
+            }
+            
+            // Funzione per copiare il debug negli appunti
+            document.getElementById('copyDebugBtn').addEventListener('click', function() {
+                const debugInfo = `
+URL: ${window.location.href}
+User Agent: ${navigator.userAgent}
+Referer: ${document.referrer}
+Parametri: ${JSON.stringify(allParams, null, 2)}
+Redirect calcolato: ${computedRedirectUrl}
+Debug Log:
+${document.getElementById('debug').innerText}
+                `;
+                
+                navigator.clipboard.writeText(debugInfo).then(() => {
+                    alert('Informazioni di debug copiate negli appunti');
+                }, (err) => {
+                    console.error('Errore nella copia: ', err);
+                    alert('Errore durante la copia. Prova manualmente.');
+                });
+            });
+            
+            // Event listener per il pulsante di redirect manuale
+            document.getElementById('manualRedirectBtn').addEventListener('click', function() {
+                if (computedRedirectUrl) {
+                    window.location.href = computedRedirectUrl;
+                } else {
+                    alert('Nessun URL di redirect calcolato');
+                }
+            });
+            
+            // Event listener per il toggle della modalità debug
+            document.getElementById('debugToggle').addEventListener('click', function() {
+                if (!isDebugMode) {
+                    enableDebugMode();
+                } else {
+                    // Disabilita modalità debug e rimuovi il parametro
+                    isDebugMode = false;
+                    document.getElementById('debugContent').style.display = 'none';
+                    document.getElementById('spinner').style.display = 'block';
+                    document.getElementById('message').textContent = 'Attendi mentre ti reindirizziamo all\'app Peeno...';
+                    
+                    // Esegui il redirect
+                    if (computedRedirectUrl) {
+                        setTimeout(() => {
+                            window.location.href = computedRedirectUrl;
+                        }, 1000);
+                    }
+                }
+            });
+            
+            // Funzione per popolare la tabella dei parametri
+            function populateParamsTable(params) {
+                const tbody = document.getElementById('paramsBody');
+                tbody.innerHTML = '';
+                
+                if (Object.keys(params).length === 0) {
+                    const row = document.createElement('tr');
+                    const cell = document.createElement('td');
+                    cell.colSpan = 2;
+                    cell.textContent = 'Nessun parametro trovato';
+                    row.appendChild(cell);
+                    tbody.appendChild(row);
+                    return;
+                }
+                
+                for (const [key, value] of Object.entries(params)) {
+                    const row = document.createElement('tr');
+                    
+                    const keyCell = document.createElement('td');
+                    keyCell.textContent = key;
+                    row.appendChild(keyCell);
+                    
+                    const valueCell = document.createElement('td');
+                    valueCell.textContent = value;
+                    row.appendChild(valueCell);
+                    
+                    tbody.appendChild(row);
+                }
             }
             
             // Funzione per ottenere i parametri dall'URL
@@ -122,12 +347,27 @@
                 }
             }
             
+            // Popola le informazioni di base
+            document.getElementById('fullUrl').textContent = window.location.href;
+            document.getElementById('urlPath').textContent = window.location.pathname;
+            document.getElementById('referer').textContent = document.referrer || 'Non disponibile';
+            document.getElementById('userAgent').textContent = navigator.userAgent;
+            
             // Log dell'URL corrente
             logDebug('URL corrente: ' + window.location.href);
             
             // Ottieni i parametri
-            const params = getParams();
-            logDebug('Parametri ricevuti: ' + JSON.stringify(params));
+            allParams = getParams();
+            logDebug('Parametri ricevuti: ' + JSON.stringify(allParams));
+            populateParamsTable(allParams);
+            
+            // Analizza il parametro state se presente
+            if (allParams.state) {
+                const stateData = parseStateParam(allParams.state);
+                document.getElementById('stateParamSection').style.display = 'block';
+                document.getElementById('stateParamContent').textContent = JSON.stringify(stateData, null, 2);
+                logDebug('State param: ' + JSON.stringify(stateData));
+            }
             
             // Verifica se abbiamo gli elementi principali nel path
             const path = window.location.pathname;
@@ -144,32 +384,36 @@
                 let userId = '';
                 
                 // Cerca accountId in diversi posti possibili
-                if (params.accountId) {
+                if (allParams.accountId) {
                     hasAccountId = true;
-                    accountId = params.accountId;
+                    accountId = allParams.accountId;
                     logDebug('AccountId trovato nel parametro accountId: ' + accountId);
-                } else if (params.account) {
+                } else if (allParams.account) {
                     hasAccountId = true;
-                    accountId = params.account;
+                    accountId = allParams.account;
                     logDebug('AccountId trovato nel parametro account: ' + accountId);
-                } else if (params.account_id) {
+                } else if (allParams.account_id) {
                     hasAccountId = true;
-                    accountId = params.account_id;
+                    accountId = allParams.account_id;
                     logDebug('AccountId trovato nel parametro account_id: ' + accountId);
+                } else if (allParams.code) {
+                    // Stripe potrebbe passare un authorization code invece di un account ID
+                    logDebug('Authorization code trovato: ' + allParams.code);
+                    // In questo caso potremmo trattarlo come un successo se necessario
                 }
                 
                 // Cerca userId
-                if (params.userId) {
-                    userId = params.userId;
+                if (allParams.userId) {
+                    userId = allParams.userId;
                     logDebug('UserId trovato nel parametro userId: ' + userId);
-                } else if (params.user_id) {
-                    userId = params.user_id;
+                } else if (allParams.user_id) {
+                    userId = allParams.user_id;
                     logDebug('UserId trovato nel parametro user_id: ' + userId);
                 }
                 
                 // Controlla il parametro state per informazioni aggiuntive
-                if (params.state && !hasAccountId) {
-                    const stateData = parseStateParam(params.state);
+                if (allParams.state && !hasAccountId) {
+                    const stateData = parseStateParam(allParams.state);
                     logDebug('State param: ' + JSON.stringify(stateData));
                     
                     if (stateData) {
@@ -187,45 +431,69 @@
                 }
                 
                 // Determina il tipo di redirect in base ai parametri
-                if (params.error) {
+                if (allParams.error) {
                     messageElement.textContent = 'Si è verificato un errore. Verrai reindirizzato...';
                     redirectUrl = 'https://fooddeliveryapp-bfa07.firebaseapp.com/rider/verify-bank-account?error=verification_error';
-                    logDebug('Tipo di redirect: Errore - ' + params.error);
+                    logDebug('Tipo di redirect: Errore - ' + allParams.error);
                     
                     // Aggiungi descrizione errore se disponibile
-                    if (params.error_description) {
-                        redirectUrl += '&error_description=' + encodeURIComponent(params.error_description);
+                    if (allParams.error_description) {
+                        redirectUrl += '&error_description=' + encodeURIComponent(allParams.error_description);
                     }
                 } 
-                // Se abbiamo un account ID (successo)
-                else if (hasAccountId) {
+                // Se abbiamo un account ID o un codice di autorizzazione (successo)
+                else if (hasAccountId || allParams.code) {
                     messageElement.textContent = 'Verifica completata con successo. Verrai reindirizzato...';
                     redirectUrl = 'https://fooddeliveryapp-bfa07.firebaseapp.com/rider/become-rider?step=2&stripe_verified=true';
                     
-                    // Aggiungi accountId e userId al redirect
-                    redirectUrl += '&accountId=' + encodeURIComponent(accountId);
+                    // Aggiungi accountId e userId al redirect se disponibili
+                    if (hasAccountId) {
+                        redirectUrl += '&accountId=' + encodeURIComponent(accountId);
+                    }
+                    
                     if (userId) {
                         redirectUrl += '&userId=' + encodeURIComponent(userId);
                     }
                     
-                    logDebug('Tipo di redirect: Successo con accountId: ' + accountId);
+                    // Se abbiamo un codice di autorizzazione ma non un accountId
+                    if (allParams.code && !hasAccountId) {
+                        redirectUrl += '&code=' + encodeURIComponent(allParams.code);
+                        logDebug('Tipo di redirect: Successo con code: ' + allParams.code);
+                    } else {
+                        logDebug('Tipo di redirect: Successo con accountId: ' + accountId);
+                    }
                 } 
                 // Stato incompleto
                 else {
                     messageElement.textContent = 'Verifica incompleta. Verrai reindirizzato...';
                     redirectUrl = 'https://fooddeliveryapp-bfa07.firebaseapp.com/rider/become-rider?step=2&stripe_status=incomplete';
-                    logDebug('Tipo di redirect: Incompleto (accountId non trovato)');
+                    logDebug('Tipo di redirect: Incompleto (accountId o code non trovati)');
+                    
+                    // Se abbiamo qualsiasi altro parametro utile, passalo all'URL di redirect
+                    if (Object.keys(allParams).length > 0) {
+                        const paramStr = JSON.stringify(allParams);
+                        redirectUrl += '&debug_params=' + encodeURIComponent(paramStr);
+                    }
                 }
                 
                 // Aggiungi timestamp al redirect per evitare problemi di cache
                 redirectUrl += '&_t=' + Date.now();
                 
-                logDebug('URL di redirect finale: ' + redirectUrl);
+                // Aggiungi referer per debug
+                if (document.referrer) {
+                    redirectUrl += '&referer=' + encodeURIComponent(document.referrer);
+                }
                 
-                // Esegui il redirect
-                setTimeout(function() {
-                    window.location.href = redirectUrl;
-                }, 2000);
+                logDebug('URL di redirect finale: ' + redirectUrl);
+                computedRedirectUrl = redirectUrl;
+                document.getElementById('redirectUrl').textContent = redirectUrl;
+                
+                // Esegui il redirect solo se non siamo in modalità debug
+                if (!isDebugMode) {
+                    setTimeout(function() {
+                        window.location.href = redirectUrl;
+                    }, 2000);
+                }
             }
             
             // Esegui il redirect dopo un breve ritardo
