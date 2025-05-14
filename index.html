@@ -151,6 +151,12 @@
         <div class="spinner" id="spinner"></div>
         <p id="message">Attendi mentre ti reindirizziamo all'app Peeno...</p>
         
+        <!-- Pulsante di apertura manuale app (nascosto inizialmente) -->
+        <div id="manualOpenContainer" style="display:none; margin-top: 20px;">
+            <p style="color: #FF7A00; font-weight: bold;">Il reindirizzamento automatico sembra non funzionare.</p>
+            <button id="manualOpenBtn" class="button">Apri l'app manualmente</button>
+        </div>
+        
         <!-- Sezione Debug Completa (nascosta di default) -->
         <div id="debugContent" style="display:none;">
             <h2>Informazioni Debug</h2>
@@ -253,7 +259,32 @@ ${document.getElementById('debug').innerText}
             // Event listener per il pulsante di redirect manuale
             document.getElementById('manualRedirectBtn').addEventListener('click', function() {
                 if (computedRedirectUrl) {
-                    window.location.href = computedRedirectUrl;
+                    // Crea gli URL alternativi
+                    const fallbackUrl = computedRedirectUrl.replace('peeno://', 'https://fooddeliveryapp-bfa07.firebaseapp.com/');
+                    const universalLink = 'https://fooddeliveryapp-bfa07.firebaseapp.com/app/stripe-connect-callback?' + 
+                        new URLSearchParams(window.location.search).toString();
+                    
+                    // Usa lo stesso approccio multistep
+                    // Crea un iframe nascosto
+                    const hiddenFrame = document.createElement('iframe');
+                    hiddenFrame.style.display = 'none';
+                    hiddenFrame.src = computedRedirectUrl;
+                    document.body.appendChild(hiddenFrame);
+                    
+                    // Dopo un breve delay, usa window.location
+                    setTimeout(function() {
+                        window.location.href = computedRedirectUrl;
+                        
+                        // Se ancora qui, prova con l'universal link
+                        setTimeout(function() {
+                            window.location.href = universalLink;
+                            
+                            // Come ultima risorsa, vai al fallback URL
+                            setTimeout(function() {
+                                window.location.href = fallbackUrl;
+                            }, 1000);
+                        }, 1000);
+                    }, 500);
                 } else {
                     alert('Nessun URL di redirect calcolato');
                 }
@@ -433,7 +464,9 @@ ${document.getElementById('debug').innerText}
                 // Determina il tipo di redirect in base ai parametri
                 if (allParams.error) {
                     messageElement.textContent = 'Si è verificato un errore. Verrai reindirizzato...';
-                    redirectUrl = 'https://fooddeliveryapp-bfa07.firebaseapp.com/rider/verify-bank-account?error=verification_error';
+                    // Usa schema URI personalizzato per aprire direttamente l'app
+                    // IMPORTANTE: Aggiunto percorso assoluto per garantire compatibilità
+                    redirectUrl = 'peeno://rider/verify-bank-account?error=verification_error';
                     logDebug('Tipo di redirect: Errore - ' + allParams.error);
                     
                     // Aggiungi descrizione errore se disponibile
@@ -444,7 +477,11 @@ ${document.getElementById('debug').innerText}
                 // Se abbiamo un account ID o un codice di autorizzazione (successo)
                 else if (hasAccountId || allParams.code) {
                     messageElement.textContent = 'Verifica completata con successo. Verrai reindirizzato...';
-                    redirectUrl = 'https://fooddeliveryapp-bfa07.firebaseapp.com/rider/become-rider?step=2&stripe_verified=true';
+                    // Usa schema URI personalizzato per aprire direttamente l'app
+                    // SUCCESSO: Questo è il caso principale che dobbiamo supportare
+                    // Importante: L'URL deve essere nella forma che l'app può gestire
+                    // Usiamo la forma /rider/become-rider con parametri chiave-valore
+                    redirectUrl = 'peeno://rider/become-rider?step=2&stripe_verified=true';
                     
                     // Aggiungi accountId e userId al redirect se disponibili
                     if (hasAccountId) {
@@ -466,7 +503,8 @@ ${document.getElementById('debug').innerText}
                 // Stato incompleto
                 else {
                     messageElement.textContent = 'Verifica incompleta. Verrai reindirizzato...';
-                    redirectUrl = 'https://fooddeliveryapp-bfa07.firebaseapp.com/rider/become-rider?step=2&stripe_status=incomplete';
+                    // Usa schema URI personalizzato per aprire direttamente l'app
+                    redirectUrl = 'peeno://rider/become-rider?step=2&stripe_status=incomplete';
                     logDebug('Tipo di redirect: Incompleto (accountId o code non trovati)');
                     
                     // Se abbiamo qualsiasi altro parametro utile, passalo all'URL di redirect
@@ -475,6 +513,25 @@ ${document.getElementById('debug').innerText}
                         redirectUrl += '&debug_params=' + encodeURIComponent(paramStr);
                     }
                 }
+                
+                // Crea un URL di fallback per il browser (nel caso lo schema URI non funzioni)
+                const fallbackUrl = redirectUrl.replace('peeno://', 'https://fooddeliveryapp-bfa07.firebaseapp.com/');
+                
+                // Crea anche un URL universale per iOS che spesso ha problemi con i deep link diretti
+                // Utilizziamo la forma universalLink
+                const universalLink = 'https://fooddeliveryapp-bfa07.firebaseapp.com/app/stripe-connect-callback?' + 
+                    (hasAccountId ? 'accountId=' + encodeURIComponent(accountId) + '&' : '') +
+                    (userId ? 'userId=' + encodeURIComponent(userId) + '&' : '') +
+                    (allParams.code ? 'code=' + encodeURIComponent(allParams.code) + '&' : '') +
+                    (allParams.error ? 'error=' + encodeURIComponent(allParams.error) + '&' : '') +
+                    '_t=' + Date.now();
+                
+                // Crea un iframe nascosto per il caso di iOS
+                // Questo è un trucco per aumentare le possibilità di successo del deeplink su iOS
+                const hiddenLink = document.createElement('iframe');
+                hiddenLink.style.display = 'none';
+                hiddenLink.src = redirectUrl;
+                document.body.appendChild(hiddenLink);
                 
                 // Aggiungi timestamp al redirect per evitare problemi di cache
                 redirectUrl += '&_t=' + Date.now();
@@ -490,14 +547,48 @@ ${document.getElementById('debug').innerText}
                 
                 // Esegui il redirect solo se non siamo in modalità debug
                 if (!isDebugMode) {
+                    // Utilizziamo un metodo multistep per aumentare le chance che il deep link funzioni
+                    // Su iOS, spesso è necessario un approccio diverso rispetto ad Android
+                    
+                    // Step 1: Proviamo prima con un iframe nascosto
                     setTimeout(function() {
-                        window.location.href = redirectUrl;
-                    }, 2000);
+                        const hiddenFrame = document.createElement('iframe');
+                        hiddenFrame.style.display = 'none';
+                        hiddenFrame.src = redirectUrl;
+                        document.body.appendChild(hiddenFrame);
+                        
+                        // Step 2: Dopo un breve delay, proviamo con window.location.href
+                        setTimeout(function() {
+                            // If we're still here, try regular location change
+                            window.location.href = redirectUrl;
+                            
+                            // Step 3: Se ancora qui dopo un altro delay, proviamo con l'universal link
+                            setTimeout(function() {
+                                window.location.href = universalLink;
+                                
+                                // Step 4: Come ultima risorsa, vai al fallback URL
+                                setTimeout(function() {
+                                    window.location.href = fallbackUrl;
+                                }, 1000);
+                            }, 1000);
+                        }, 500);
+                    }, 500);
                 }
             }
             
             // Esegui il redirect dopo un breve ritardo
             determineRedirect();
+            
+            // Dopo 5 secondi, se siamo ancora su questa pagina, mostriamo il pulsante per aprire manualmente
+            setTimeout(function() {
+                document.getElementById('manualOpenContainer').style.display = 'block';
+            }, 5000);
+            
+            // Event listener per il pulsante di apertura manuale
+            document.getElementById('manualOpenBtn').addEventListener('click', function() {
+                // Prova ad aprire l'app con diversi URI schemes
+                window.location.href = 'peeno://rider/become-rider?step=2&stripe_verified=true&manual=true';
+            });
         </script>
     </div>
 </body>
