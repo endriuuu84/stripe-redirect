@@ -58,11 +58,20 @@
             margin-top: 30px;
             border-top: 1px solid #eee;
             padding-top: 15px;
+            text-align: left;
+            overflow-wrap: break-word;
+        }
+        
+        .logo {
+            width: 120px;
+            height: auto;
+            margin-bottom: 20px;
         }
     </style>
 </head>
 <body>
     <div class="container">
+        <img src="https://firebasestorage.googleapis.com/v0/b/fooddeliveryapp-bfa07.appspot.com/o/peeno-logo.png?alt=media" alt="Peeno Logo" class="logo" onerror="this.style.display='none'">
         <h1>Reindirizzamento in corso</h1>
         <div class="spinner"></div>
         <p id="message">Attendi mentre ti reindirizziamo all'app Peeno...</p>
@@ -90,6 +99,29 @@
                 return params;
             }
             
+            // Funzione per analizzare il parametro 'state'
+            function parseStateParam(stateParam) {
+                if (!stateParam) return null;
+                
+                try {
+                    // Prima prova a interpretarlo come JSON
+                    return JSON.parse(stateParam);
+                } catch (e) {
+                    try {
+                        // Se non è JSON, prova come URL params
+                        const result = {};
+                        stateParam.split('&').forEach(pair => {
+                            const [key, value] = pair.split('=');
+                            if (key && value) result[key] = decodeURIComponent(value);
+                        });
+                        return Object.keys(result).length > 0 ? result : null;
+                    } catch (e2) {
+                        logDebug('Errore parsing state: ' + e2.message);
+                        return null;
+                    }
+                }
+            }
+            
             // Log dell'URL corrente
             logDebug('URL corrente: ' + window.location.href);
             
@@ -106,38 +138,89 @@
                 const messageElement = document.getElementById('message');
                 let redirectUrl;
                 
-                // Se ci sono errori
+                // Prepara variabili per i parametri importanti
+                let hasAccountId = false;
+                let accountId = '';
+                let userId = '';
+                
+                // Cerca accountId in diversi posti possibili
+                if (params.accountId) {
+                    hasAccountId = true;
+                    accountId = params.accountId;
+                    logDebug('AccountId trovato nel parametro accountId: ' + accountId);
+                } else if (params.account) {
+                    hasAccountId = true;
+                    accountId = params.account;
+                    logDebug('AccountId trovato nel parametro account: ' + accountId);
+                } else if (params.account_id) {
+                    hasAccountId = true;
+                    accountId = params.account_id;
+                    logDebug('AccountId trovato nel parametro account_id: ' + accountId);
+                }
+                
+                // Cerca userId
+                if (params.userId) {
+                    userId = params.userId;
+                    logDebug('UserId trovato nel parametro userId: ' + userId);
+                } else if (params.user_id) {
+                    userId = params.user_id;
+                    logDebug('UserId trovato nel parametro user_id: ' + userId);
+                }
+                
+                // Controlla il parametro state per informazioni aggiuntive
+                if (params.state && !hasAccountId) {
+                    const stateData = parseStateParam(params.state);
+                    logDebug('State param: ' + JSON.stringify(stateData));
+                    
+                    if (stateData) {
+                        if (stateData.accountId || stateData.account_id) {
+                            hasAccountId = true;
+                            accountId = stateData.accountId || stateData.account_id;
+                            logDebug('AccountId trovato nel parametro state: ' + accountId);
+                        }
+                        
+                        if (stateData.userId || stateData.user_id) {
+                            userId = stateData.userId || stateData.user_id;
+                            logDebug('UserId trovato nel parametro state: ' + userId);
+                        }
+                    }
+                }
+                
+                // Determina il tipo di redirect in base ai parametri
                 if (params.error) {
                     messageElement.textContent = 'Si è verificato un errore. Verrai reindirizzato...';
                     redirectUrl = 'https://fooddeliveryapp-bfa07.firebaseapp.com/rider/verify-bank-account?error=verification_error';
-                    logDebug('Tipo di redirect: Errore');
+                    logDebug('Tipo di redirect: Errore - ' + params.error);
+                    
+                    // Aggiungi descrizione errore se disponibile
+                    if (params.error_description) {
+                        redirectUrl += '&error_description=' + encodeURIComponent(params.error_description);
+                    }
                 } 
                 // Se abbiamo un account ID (successo)
-                else if (params.accountId || params.account) {
+                else if (hasAccountId) {
                     messageElement.textContent = 'Verifica completata con successo. Verrai reindirizzato...';
                     redirectUrl = 'https://fooddeliveryapp-bfa07.firebaseapp.com/rider/become-rider?step=2&stripe_verified=true';
-                    logDebug('Tipo di redirect: Successo');
+                    
+                    // Aggiungi accountId e userId al redirect
+                    redirectUrl += '&accountId=' + encodeURIComponent(accountId);
+                    if (userId) {
+                        redirectUrl += '&userId=' + encodeURIComponent(userId);
+                    }
+                    
+                    logDebug('Tipo di redirect: Successo con accountId: ' + accountId);
                 } 
                 // Stato incompleto
                 else {
                     messageElement.textContent = 'Verifica incompleta. Verrai reindirizzato...';
                     redirectUrl = 'https://fooddeliveryapp-bfa07.firebaseapp.com/rider/become-rider?step=2&stripe_status=incomplete';
-                    logDebug('Tipo di redirect: Incompleto');
+                    logDebug('Tipo di redirect: Incompleto (accountId non trovato)');
                 }
                 
-                // Aggiungi tutti i parametri originali all'URL di redirect
-                for (const key in params) {
-                    // Evita di aggiungere parametri già presenti nel nuovo URL
-                    if (key !== 'step' && key !== 'stripe_verified' && key !== 'stripe_status' && key !== 'error') {
-                        if (redirectUrl.includes('?')) {
-                            redirectUrl += '&' + key + '=' + params[key];
-                        } else {
-                            redirectUrl += '?' + key + '=' + params[key];
-                        }
-                    }
-                }
+                // Aggiungi timestamp al redirect per evitare problemi di cache
+                redirectUrl += '&_t=' + Date.now();
                 
-                logDebug('URL di redirect: ' + redirectUrl);
+                logDebug('URL di redirect finale: ' + redirectUrl);
                 
                 // Esegui il redirect
                 setTimeout(function() {
