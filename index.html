@@ -259,32 +259,19 @@ ${document.getElementById('debug').innerText}
             // Event listener per il pulsante di redirect manuale
             document.getElementById('manualRedirectBtn').addEventListener('click', function() {
                 if (computedRedirectUrl) {
-                    // Crea gli URL alternativi
-                    const fallbackUrl = computedRedirectUrl.replace('peeno://', 'https://fooddeliveryapp-bfa07.firebaseapp.com/');
-                    const universalLink = 'https://fooddeliveryapp-bfa07.firebaseapp.com/app/stripe-connect-callback?' + 
-                        new URLSearchParams(window.location.search).toString();
+                    // Rileva se siamo su mobile o desktop
+                    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                    const isAndroid = /Android/.test(navigator.userAgent);
+                    const isMobile = isIOS || isAndroid;
                     
-                    // Usa lo stesso approccio multistep
-                    // Crea un iframe nascosto
-                    const hiddenFrame = document.createElement('iframe');
-                    hiddenFrame.style.display = 'none';
-                    hiddenFrame.src = computedRedirectUrl;
-                    document.body.appendChild(hiddenFrame);
-                    
-                    // Dopo un breve delay, usa window.location
-                    setTimeout(function() {
+                    if (isMobile) {
+                        // Su mobile, prova il deep link
                         window.location.href = computedRedirectUrl;
-                        
-                        // Se ancora qui, prova con l'universal link
-                        setTimeout(function() {
-                            window.location.href = universalLink;
-                            
-                            // Come ultima risorsa, vai al fallback URL
-                            setTimeout(function() {
-                                window.location.href = fallbackUrl;
-                            }, 1000);
-                        }, 1000);
-                    }, 500);
+                    } else {
+                        // Su desktop, vai direttamente al fallback
+                        const fallbackUrl = computedRedirectUrl.replace('peeno://', 'https://fooddeliveryapp-bfa07.firebaseapp.com/');
+                        window.location.href = fallbackUrl;
+                    }
                 } else {
                     alert('Nessun URL di redirect calcolato');
                 }
@@ -547,48 +534,53 @@ ${document.getElementById('debug').innerText}
                 
                 // Esegui il redirect solo se non siamo in modalità debug
                 if (!isDebugMode) {
-                    // Utilizziamo un metodo multistep per aumentare le chance che il deep link funzioni
-                    // Su iOS, spesso è necessario un approccio diverso rispetto ad Android
+                    // Rilevamento del dispositivo per ottimizzare il redirect
+                    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                    const isAndroid = /Android/.test(navigator.userAgent);
+                    const isMobile = isIOS || isAndroid;
                     
-                    // Step 1: Proviamo prima con un iframe nascosto
-                    setTimeout(function() {
-                        const hiddenFrame = document.createElement('iframe');
-                        hiddenFrame.style.display = 'none';
-                        hiddenFrame.src = redirectUrl;
-                        document.body.appendChild(hiddenFrame);
+                    if (isMobile) {
+                        // Su dispositivi mobili, usa prima il deep link diretto
+                        logDebug('Rilevato dispositivo mobile: ' + (isIOS ? 'iOS' : 'Android'));
                         
-                        // Step 2: Dopo un breve delay, proviamo con window.location.href
+                        // Per iOS, usa prima l'iframe nascosto (più efficace)
+                        if (isIOS) {
+                            const hiddenFrame = document.createElement('iframe');
+                            hiddenFrame.style.display = 'none';
+                            hiddenFrame.src = redirectUrl;
+                            document.body.appendChild(hiddenFrame);
+                        }
+                        
+                        // Poi prova il redirect diretto
                         setTimeout(function() {
-                            // If we're still here, try regular location change
                             window.location.href = redirectUrl;
-                            
-                            // Step 3: Se ancora qui dopo un altro delay, proviamo con l'universal link
-                            setTimeout(function() {
-                                window.location.href = universalLink;
-                                
-                                // Step 4: Come ultima risorsa, vai al fallback URL
-                                setTimeout(function() {
-                                    window.location.href = fallbackUrl;
-                                }, 1000);
-                            }, 1000);
                         }, 500);
-                    }, 500);
+                    } else {
+                        // Su desktop, vai direttamente al fallback URL (app web)
+                        logDebug('Rilevato desktop, utilizzo fallback URL diretto');
+                        setTimeout(function() {
+                            window.location.href = fallbackUrl;
+                        }, 500);
+                    }
                 }
             }
             
             // Esegui il redirect dopo un breve ritardo
             determineRedirect();
             
-            // Dopo 5 secondi, se siamo ancora su questa pagina, mostriamo il pulsante per aprire manualmente
-            setTimeout(function() {
-                document.getElementById('manualOpenContainer').style.display = 'block';
-            }, 5000);
-            
-            // Event listener per il pulsante di apertura manuale
-            document.getElementById('manualOpenBtn').addEventListener('click', function() {
-                // Prova ad aprire l'app con diversi URI schemes
-                window.location.href = 'peeno://rider/become-rider?step=2&stripe_verified=true&manual=true';
-            });
+            // Mostriamo il pulsante per aprire manualmente solo su dispositivi mobili dopo 3 secondi
+            const isIOSorAndroid = /iPad|iPhone|iPod|Android/.test(navigator.userAgent) && !window.MSStream;
+            if (isIOSorAndroid) {
+                setTimeout(function() {
+                    document.getElementById('manualOpenContainer').style.display = 'block';
+                }, 3000);
+                
+                // Event listener per il pulsante di apertura manuale
+                document.getElementById('manualOpenBtn').addEventListener('click', function() {
+                    // Prova ad aprire l'app direttamente col deep link
+                    window.location.href = 'peeno://rider/become-rider?step=2&stripe_verified=true&manual=true';
+                });
+            }
         </script>
     </div>
 </body>
